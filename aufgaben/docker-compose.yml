@@ -1,0 +1,13 @@
+services:
+  aufgaben:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      # Optional: Passwortschutz aktivieren (Zeilen einkommentieren)
+      # APP_USER: ich
+      # APP_PASSWORD: bitte-aendern
+      TZ: Europe/Berlin

@@ -44,6 +44,7 @@ dialog input,dialog select,dialog textarea{width:100%}
 <body>
 <header>
   <h1>📋 Aufgaben</h1>
+  <span id="net" class="badge"></span>
   <button id="exp" class="sm">Export</button>
   <button id="imp" class="sm">Import</button>
   <input type="file" id="file" accept=".json" hidden>
@@ -78,8 +79,25 @@ const QUICK=["Angefragt","Angebot erhalten","Bestellt","Geliefert","Rückruf ver
 const KEY="aufgaben.v1";
 let S={tasks:[]},cat="alle",open=new Set(),editId=null;
 try{S=JSON.parse(localStorage.getItem(KEY))||S}catch(e){}
+let rev=0,pending=false,timer=null,online=false;
 const $=id=>document.getElementById(id);
-const save=()=>localStorage.setItem(KEY,JSON.stringify(S));
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}pending=true;clearTimeout(timer);timer=setTimeout(push,400)};
+const ts=t=>t.updated||t.created||"";
+function merge(a,b){const m=new Map();[...a,...b].forEach(t=>{const o=m.get(t.id);if(!o||ts(t)>ts(o))m.set(t.id,t)});return [...m.values()]}
+async function push(){
+  try{const r=await fetch("api/data",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({rev,data:S})});
+    if(r.status===409){const j=await r.json();S.tasks=merge(S.tasks,j.data.tasks);rev=j.rev;localStorage.setItem(KEY,JSON.stringify(S));return push()}
+    const j=await r.json();rev=j.rev;pending=false;online=true;stat()}catch(e){online=false;stat()}
+}
+async function pull(){
+  if(pending)return;
+  try{const r=await fetch("api/data");const j=await r.json();online=true;
+    if(j.rev===0&&S.tasks.length){rev=0;save()}   // erste Übernahme lokaler Daten
+    else if(j.rev!==rev){rev=j.rev;S=j.data.tasks?j.data:{tasks:[]};localStorage.setItem(KEY,JSON.stringify(S));render()}
+  }catch(e){online=false}stat()}
+function stat(){$("net").textContent=online?(pending?"⏳":"☁️ synchron"):"⚠️ offline";}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)pull()});
+setInterval(pull,20000);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const now=()=>new Date().toISOString();
 const fmt=d=>new Date(d).toLocaleString("de-DE",{dateStyle:"medium",timeStyle:"short"});
@@ -163,7 +181,7 @@ $("del").onclick=()=>{if(confirm("Aufgabe samt Verlauf löschen?")){S.tasks=S.ta
 $("exp").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:"application/json"}));a.download="aufgaben-"+today()+".json";a.click()};
 $("imp").onclick=()=>$("file").click();
 $("file").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d.tasks))throw 0;if(confirm("Bestehende Daten ersetzen?\nOK = ersetzen, Abbrechen = nicht importieren")){S=d;save();render()}}catch{alert("Ungültige Datei")}e.target.value=""};
-render();
+render();pull();
 </script>
 </body>
 </html>
