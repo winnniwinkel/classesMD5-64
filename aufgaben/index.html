@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aufgaben</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--tx:#1d2330;--mut:#6b7385;--bd:#dfe2e8;--ac:#2f6fed;--priv:#8b5cf6;--job:#0e9f6e;--warn:#e08a00;--bad:#d64545}
+@media(prefers-color-scheme:dark){:root{--bg:#14171d;--card:#1d222b;--tx:#e6e9ef;--mut:#939bad;--bd:#2d3440;--ac:#5b8def}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:5}
+h1{font-size:18px;margin:0 auto 0 0}
+button,input,select,textarea{font:inherit;color:inherit;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:7px 10px}
+button{cursor:pointer}button.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+button.sm{padding:3px 8px;font-size:13px}
+main{max-width:860px;margin:0 auto;padding:12px 16px 60px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.bar input[type=search]{flex:1;min-width:140px}
+.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.task{background:var(--card);border:1px solid var(--bd);border-left:5px solid var(--bd);border-radius:10px;margin-bottom:10px;padding:10px 12px}
+.task.privat{border-left-color:var(--priv)}.task.dienstlich{border-left-color:var(--job)}
+.task.done .t{text-decoration:line-through;color:var(--mut)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.t{font-weight:600;flex:1;cursor:pointer;min-width:140px}
+.badge{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--bg);border:1px solid var(--bd);color:var(--mut)}
+.badge.st-wartet{color:var(--warn);border-color:var(--warn)}.badge.st-arbeit{color:var(--ac);border-color:var(--ac)}.badge.st-erledigt{color:var(--job);border-color:var(--job)}
+.due.late{color:var(--bad);font-weight:600}
+.meta{color:var(--mut);font-size:13px;margin-top:4px}
+.detail{margin-top:10px;border-top:1px dashed var(--bd);padding-top:10px}
+.log{list-style:none;margin:8px 0;padding:0 0 0 14px;border-left:2px solid var(--bd)}
+.log li{position:relative;margin:0 0 8px 8px}
+.log li:before{content:"";position:absolute;left:-18px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--ac)}
+.log time{color:var(--mut);font-size:12px;display:block}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chips button{border-radius:99px;font-size:13px;padding:3px 10px}
+dialog{border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--tx);width:min(480px,94vw);padding:16px}
+dialog::backdrop{background:#0006}
+label{display:block;margin:8px 0 2px;font-size:13px;color:var(--mut)}
+dialog input,dialog select,dialog textarea{width:100%}
+.empty{text-align:center;color:var(--mut);padding:40px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>📋 Aufgaben</h1>
+  <button id="exp" class="sm">Export</button>
+  <button id="imp" class="sm">Import</button>
+  <input type="file" id="file" accept=".json" hidden>
+  <button id="new" class="pri">+ Neue Aufgabe</button>
+</header>
+<main>
+  <div class="bar tabs" id="catTabs"></div>
+  <div class="bar">
+    <input type="search" id="q" placeholder="Suchen (Titel, Notizen, Verlauf)…">
+    <select id="fs"><option value="aktiv">Alle offenen</option><option value="Offen">Offen</option><option value="In Arbeit">In Arbeit</option><option value="Wartet">Wartet</option><option value="Erledigt">Erledigt</option><option value="alle">Alle</option></select>
+    <select id="so"><option value="due">Nach Fälligkeit</option><option value="prio">Nach Priorität</option><option value="upd">Zuletzt geändert</option></select>
+  </div>
+  <div id="list"></div>
+</main>
+
+<dialog id="dlg"><form method="dialog" id="f">
+  <h3 id="dt" style="margin-top:0">Aufgabe</h3>
+  <label>Titel</label><input id="fTitle" required>
+  <div class="row"><div style="flex:1"><label>Bereich</label><select id="fCat"><option>privat</option><option>dienstlich</option></select></div>
+  <div style="flex:1"><label>Priorität</label><select id="fPrio"><option value="1">Hoch</option><option value="2" selected>Normal</option><option value="3">Niedrig</option></select></div></div>
+  <div class="row"><div style="flex:1"><label>Fällig am</label><input type="date" id="fDue"></div>
+  <div style="flex:1"><label>Status</label><select id="fSt"></select></div></div>
+  <label>Notizen</label><textarea id="fNote" rows="3"></textarea>
+  <div class="row" style="justify-content:flex-end;margin-top:12px">
+    <button type="button" id="del" class="sm" style="margin-right:auto;color:var(--bad)">Löschen</button>
+    <button type="button" id="cancel">Abbrechen</button><button class="pri">Speichern</button></div>
+</form></dialog>
+
+<script>
+const STATI=["Offen","In Arbeit","Wartet","Erledigt"];
+const QUICK=["Angefragt","Angebot erhalten","Bestellt","Geliefert","Rückruf vereinbart","Termin vereinbart","Erinnerung geschickt","Gelöst"];
+const KEY="aufgaben.v1";
+let S={tasks:[]},cat="alle",open=new Set(),editId=null;
+try{S=JSON.parse(localStorage.getItem(KEY))||S}catch(e){}
+const $=id=>document.getElementById(id);
+const save=()=>localStorage.setItem(KEY,JSON.stringify(S));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const now=()=>new Date().toISOString();
+const fmt=d=>new Date(d).toLocaleString("de-DE",{dateStyle:"medium",timeStyle:"short"});
+const fmtD=d=>new Date(d+"T00:00").toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"});
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const today=()=>new Date().toISOString().slice(0,10);
+
+function addLog(t,text,type){t.log.push({id:uid(),at:now(),text,type:type||"schritt"});t.updated=now()}
+
+function render(){
+  $("catTabs").innerHTML=["alle","privat","dienstlich"].map(c=>`<button class="${c===cat?"on":""}" data-c="${c}">${c[0].toUpperCase()+c.slice(1)}</button>`).join("");
+  const q=$("q").value.toLowerCase(),fs=$("fs").value,so=$("so").value;
+  let L=S.tasks.filter(t=>(cat==="alle"||t.cat===cat)&&(fs==="alle"||(fs==="aktiv"?t.status!=="Erledigt":t.status===fs))&&
+    (!q||(t.title+" "+t.note+" "+t.log.map(l=>l.text).join(" ")).toLowerCase().includes(q)));
+  L.sort((a,b)=>so==="upd"?b.updated.localeCompare(a.updated):so==="prio"?a.prio-b.prio||(a.due||"9").localeCompare(b.due||"9"):(a.due||"9").localeCompare(b.due||"9")||a.prio-b.prio);
+  $("list").innerHTML=L.length?L.map(card).join(""):'<div class="empty">Keine Aufgaben. Mit „+ Neue Aufgabe“ anlegen.</div>';
+}
+function card(t){
+  const late=t.due&&t.due<today()&&t.status!=="Erledigt";
+  const last=t.log[t.log.length-1];
+  const st="st-"+({"In Arbeit":"arbeit",Wartet:"wartet",Erledigt:"erledigt"}[t.status]||"offen");
+  const o=open.has(t.id);
+  return `<div class="task ${t.cat} ${t.status==="Erledigt"?"done":""}" data-id="${t.id}">
+  <div class="row"><span class="t" data-a="toggle">${esc(t.title)}</span>
+   <span class="badge">${t.cat}</span><span class="badge ${st}">${t.status}</span>
+   ${t.prio==1?'<span class="badge" style="color:var(--bad)">Hoch</span>':""}
+   ${t.due?`<span class="badge due ${late?"late":""}">${fmtD(t.due)}</span>`:""}</div>
+  ${!o&&last?`<div class="meta">Letzter Schritt: ${esc(last.text)} · ${fmt(last.at)}</div>`:""}
+  ${o?detail(t):""}</div>`;
+}
+function detail(t){
+  return `<div class="detail">
+  ${t.note?`<div style="white-space:pre-wrap;margin-bottom:8px">${esc(t.note)}</div>`:""}
+  <ul class="log">${t.log.map(l=>`<li><time>${fmt(l.at)}${l.type==="status"?" · Status":""}</time>${esc(l.text)} <button class="sm" data-a="dellog" data-l="${l.id}" title="Eintrag löschen">×</button></li>`).join("")||'<li><time>Noch keine Schritte dokumentiert</time></li>'}</ul>
+  <div class="chips">${QUICK.map(q=>`<button data-a="quick" data-q="${q}">${q}</button>`).join("")}</div>
+  <form class="row" data-a="addlog"><input name="txt" placeholder="Zwischenschritt notieren, z. B. „Ersatzteil bei Firma X bestellt“" style="flex:1;min-width:200px"><button class="pri">Hinzufügen</button></form>
+  <div class="row" style="margin-top:8px">
+   <select data-a="status">${STATI.map(s=>`<option ${s===t.status?"selected":""}>${s}</option>`).join("")}</select>
+   <button class="sm" data-a="edit">Bearbeiten</button></div></div>`;
+}
+
+document.addEventListener("click",e=>{
+  const tab=e.target.closest("[data-c]");if(tab){cat=tab.dataset.c;return render()}
+  const el=e.target.closest("[data-a]");if(!el||el.tagName==="FORM"||el.tagName==="SELECT")return;
+  const card=el.closest(".task"),t=S.tasks.find(x=>x.id===card.dataset.id),a=el.dataset.a;
+  if(a==="toggle")open.has(t.id)?open.delete(t.id):open.add(t.id);
+  else if(a==="quick"){const x=prompt(el.dataset.q+" – Details (optional, z. B. Firma/Teilenummer):","");if(x===null)return;addLog(t,el.dataset.q+(x?": "+x:""))}
+  else if(a==="dellog"){t.log=t.log.filter(l=>l.id!==el.dataset.l)}
+  else if(a==="edit")return openDlg(t);
+  save();render();
+});
+document.addEventListener("submit",e=>{
+  const fm=e.target.closest("[data-a=addlog]");if(!fm)return;e.preventDefault();
+  const t=S.tasks.find(x=>x.id===fm.closest(".task").dataset.id),v=fm.txt.value.trim();if(!v)return;
+  addLog(t,v);save();render();
+});
+document.addEventListener("change",e=>{
+  if(e.target.dataset.a!=="status")return;
+  const t=S.tasks.find(x=>x.id===e.target.closest(".task").dataset.id);
+  if(t.status!==e.target.value){t.status=e.target.value;addLog(t,"Status → "+t.status,"status");save();render()}
+});
+["q","fs","so"].forEach(i=>$(i).addEventListener("input",render));
+
+$("fSt").innerHTML=STATI.map(s=>`<option>${s}</option>`).join("");
+function openDlg(t){
+  editId=t?t.id:null;$("dt").textContent=t?"Aufgabe bearbeiten":"Neue Aufgabe";
+  $("fTitle").value=t?.title||"";$("fCat").value=t?.cat||(cat==="alle"?"privat":cat);$("fPrio").value=t?.prio||2;
+  $("fDue").value=t?.due||"";$("fSt").value=t?.status||"Offen";$("fNote").value=t?.note||"";
+  $("del").style.display=t?"":"none";$("dlg").showModal();
+}
+$("new").onclick=()=>openDlg();$("cancel").onclick=()=>$("dlg").close();
+$("f").onsubmit=()=>{
+  let t=S.tasks.find(x=>x.id===editId);
+  const d={title:$("fTitle").value.trim(),cat:$("fCat").value,prio:+$("fPrio").value,due:$("fDue").value,status:$("fSt").value,note:$("fNote").value};
+  if(!t){t={id:uid(),created:now(),log:[],...d};S.tasks.push(t);addLog(t,"Aufgabe angelegt","status");open.add(t.id)}
+  else{if(t.status!==d.status)addLog(t,"Status → "+d.status,"status");Object.assign(t,d);t.updated=now()}
+  t.updated=now();save();render();
+};
+$("del").onclick=()=>{if(confirm("Aufgabe samt Verlauf löschen?")){S.tasks=S.tasks.filter(x=>x.id!==editId);save();$("dlg").close();render()}};
+
+$("exp").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:"application/json"}));a.download="aufgaben-"+today()+".json";a.click()};
+$("imp").onclick=()=>$("file").click();
+$("file").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d.tasks))throw 0;if(confirm("Bestehende Daten ersetzen?\nOK = ersetzen, Abbrechen = nicht importieren")){S=d;save();render()}}catch{alert("Ungültige Datei")}e.target.value=""};
+render();
+</script>
+</body>
+</html>
